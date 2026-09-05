@@ -1,0 +1,71 @@
+@gateway = http://localhost:5080
+@timesheet = http://localhost:5082
+
+### Sign in first
+# @name login
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "priya@company.com",
+  "password": "Demo@123"
+}
+
+@token = {{login.response.body.token}}
+
+### Connect a provider — no user id in the body; the token decides whose account
+POST {{gateway}}/api/integrations/connect
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "provider": "GitHub",
+  "accessToken": "demo-token-github"
+}
+
+### Connection status, including any last sync error
+GET {{gateway}}/api/integrations/status
+Authorization: Bearer {{token}}
+
+### Generate this week. Any date in the week works — the server snaps it to Monday,
+### and running it twice replaces the week rather than duplicating it.
+POST {{gateway}}/api/timesheets/generate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "weekStartDate": "2026-09-02"
+}
+
+### The caller's own timesheets
+GET {{gateway}}/api/timesheets/mine
+Authorization: Bearer {{token}}
+
+### Someone else's timesheets -> 403
+GET {{gateway}}/api/timesheets/user/2c6b9a04-57e3-4f81-b3d7-0a94e2f16c58
+Authorization: Bearer {{token}}
+
+### Approving your own timesheet as an employee -> 403 (was 204 before this release)
+POST {{gateway}}/api/approvals/00000000-0000-0000-0000-000000000000/decision
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "approve": true
+}
+
+### Ask the assistant about your own activity — no user id in the body
+POST {{gateway}}/api/chat/ask
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "question": "What did I work on last Thursday?"
+}
+
+### Manager-only: pending approvals for the calling manager's team
+GET {{gateway}}/api/approvals/pending
+Authorization: Bearer {{token}}
+
+### Health
+GET {{timesheet}}/health

@@ -1,0 +1,17 @@
+# .NET
+backend/**/bin/
+backend/**/obj/
+*.user
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Env & secrets — never commit these
+.env
+.env.local
+**/appsettings.Development.local.json
+*.pfx
+
+# OS
+.DS_Store

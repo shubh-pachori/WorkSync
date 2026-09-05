@@ -1,0 +1,136 @@
+@identity = http://localhost:5081
+@gateway = http://localhost:5080
+
+### Sign in as the demo employee (through the gateway, as the SPA does)
+### Sets the httpOnly refresh cookie; the access token is in the body.
+# @name login
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "priya@company.com",
+  "password": "Demo@123"
+}
+
+### Capture the access token from the response above
+@token = {{login.response.body.accessToken}}
+
+### The caller's own profile — no id in the URL
+GET {{gateway}}/api/auth/me
+Authorization: Bearer {{token}}
+
+### Wrong password -> 401, with no hint that the account exists
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "priya@company.com",
+  "password": "WrongPassword1"
+}
+
+### Unknown email -> the same 401, and NO account is created
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "definitely-a-manager@example.com",
+  "password": "AnyPassword1"
+}
+
+### ---------------------------------------------------------------------------
+### Two-factor authentication
+### ---------------------------------------------------------------------------
+
+### Current 2FA state for the caller
+GET {{gateway}}/api/auth/totp/status
+Authorization: Bearer {{token}}
+
+### Begin enrolment -> returns the base32 secret and the otpauth:// URI for the QR code.
+### 2FA is NOT on yet; the secret is inert until a code confirms it.
+# @name totpSetup
+POST {{gateway}}/api/auth/totp/setup
+Authorization: Bearer {{token}}
+
+### Confirm enrolment with a live code -> returns the ten recovery codes, shown once.
+### Also revokes every existing session, including this one.
+POST {{gateway}}/api/auth/totp/enable
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+
+### Sign in again now that 2FA is on -> no access token, just an mfaToken
+# @name mfaLogin
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "priya@company.com",
+  "password": "Demo@123"
+}
+
+### Step two: the authenticator code (or a recovery code) completes the sign-in
+POST {{gateway}}/api/auth/login/totp
+Content-Type: application/json
+
+{
+  "mfaToken": "{{mfaLogin.response.body.mfaToken}}",
+  "code": "123456"
+}
+
+### The mfaToken is issued for a different audience, so it is NOT an access token -> 401
+GET {{gateway}}/api/auth/me
+Authorization: Bearer {{mfaLogin.response.body.mfaToken}}
+
+### Replace the recovery codes (invalidates any unused ones)
+POST {{gateway}}/api/auth/totp/recovery-codes
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+
+### Turn 2FA off — needs the password as well as a code
+POST {{gateway}}/api/auth/totp/disable
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "password": "Demo@123",
+  "code": "123456"
+}
+
+### ---------------------------------------------------------------------------
+### Sessions
+### ---------------------------------------------------------------------------
+
+### Exchange the refresh cookie for a new access token. The cookie rotates on every call;
+### this is also how the SPA restores a session after a page reload.
+POST {{gateway}}/api/auth/refresh
+
+### Run the line above TWICE without refreshing in between: the second call replays an
+### already-rotated token, which is treated as theft and revokes the whole family.
+
+### Sign out — revokes the family and clears the cookie
+POST {{gateway}}/api/auth/logout
+Authorization: Bearer {{token}}
+
+### ---------------------------------------------------------------------------
+### Internal endpoints
+### ---------------------------------------------------------------------------
+
+### Via the gateway -> 404, blocked at the ingress
+GET {{gateway}}/api/auth/internal/users/8f7d3c1e-1b64-4a2f-9d05-6c1a7e93b420
+
+### Direct, without the shared key -> 404
+GET {{identity}}/api/auth/internal/users/8f7d3c1e-1b64-4a2f-9d05-6c1a7e93b420
+
+### Direct, with the shared key -> 200
+GET {{identity}}/api/auth/internal/users/8f7d3c1e-1b64-4a2f-9d05-6c1a7e93b420
+X-Internal-Api-Key: {{$dotenv INTERNAL_API_KEY}}
+
+### Health
+GET {{identity}}/health
